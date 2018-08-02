@@ -4,6 +4,7 @@
 #include <libk/stdio.h>
 #include <libk/stdarg.h>
 #include <libk/string.h>
+#include <psp2/rtc.h>
 
 #include "renderer.h"
 
@@ -29,10 +30,10 @@ static int pass[4] = {0, 0, 0, 0};
 static int i = 0;
 static int guess = 0;
 
-int ksceDisplaySetFrameBufInternal(unsigned int head, unsigned int index, const SceDisplayFrameBuf *pParam, int sync);
 int ksceDisplayWaitVblankStart(void);
 int kscePowerRequestColdReset(void);
 int ksceDisplayGetPrimaryHead(void);
+int ksceDisplaySetFrameBufInternal(int head, int index, const SceDisplayFrameBuf *pParam, int sync);
 
 void hookFunctionExport(uint32_t nid, const void *func, const char* module){
 	hooks[current_hook] = taiHookFunctionExportForKernel(KERNEL_PID, &refs[current_hook], module, TAI_ANY_LIBRARY, nid, func);
@@ -48,15 +49,19 @@ void clearScreen(){
 }
 
 void updateDisplay(){
-	setTextColor(0xFFFFFFFF);
+	setTextColor(0xFF0000FF);
 	clearScreen();
-	drawStringF(200, 100, "Insert security password to start this app");
+	drawStringF(200, 100, "Application LOCKED! Insert password to continue!");
 	drawStringF(270, 120, "Attempts remaining: %d", retry + 1);
 	drawStringF(320 + 12 * i, 205, "_");
 	drawStringF(320, 200, "%d%d%d%d", pass[0], pass[1], pass[2], pass[3]);
 	if (retry == 0){
 		setTextColor(0xFF0000FF);
-		drawStringF(150, 140, "/!\\ Wrong password will now cause a PSVITA reboot /!\\");
+		drawStringF(150, 140, "Attempt limit REACHED! EXITING!");
+		int i;
+        bubble_log = fopen("ux0:data/BubbleLock/bubblelocklog.txt" ,"w");
+		for(i = 0; i < 10;i++){
+       		fprintf (bubble_log, "WARNING: Someone has attempted to get into one of your applications! %d\n",i + 1);
 	}
 	ksceDisplaySetFrameBufInternal(head, 1, &fb, SCE_DISPLAY_SETBUF_NEXTFRAME);
 }
@@ -84,7 +89,7 @@ void initFrameBuffer(){
 	
 }
 
-static SceUID _ksceKernelLaunchAppPatched(void *args) {
+static SceUID ksceKernelLaunchAppPatched(void *args) {
 	
 	// Getting passed args
 	char* tid  = (char*)((uintptr_t*)args)[0];
@@ -138,7 +143,7 @@ static SceUID _ksceKernelLaunchAppPatched(void *args) {
 		}
 	}
 	
-	if (retry < 0) kscePowerRequestColdReset();
+	if (retry < 0) SCE_KERNEL_STOP_SUCCESS();
 	return r;
 
 }
@@ -150,7 +155,7 @@ SceUID ksceKernelLaunchApp_patched(char *tid, uint32_t flags, char *path, void *
 	args[2] = (uintptr_t)path;
 	args[3] = (uintptr_t)unk;
 
-	return ksceKernelRunWithStack(0x4000, _ksceKernelLaunchAppPatched, args);
+	return ksceKernelRunWithStack(0x4000, ksceKernelLaunchAppPatched, args);
 }
 
 void _start() __attribute__ ((weak, alias ("module_start")));
